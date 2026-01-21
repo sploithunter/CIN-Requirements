@@ -7,6 +7,21 @@ import type {
   Questionnaire,
   RequirementSuggestion,
   TokenResponse,
+  Project,
+  ProjectWithMembers,
+  ProjectListItem,
+  ProjectMember,
+  ProjectRole,
+  Document,
+  DocumentWithContent,
+  DocumentListItem,
+  DocumentType,
+  DocumentVersion,
+  DocumentVersionWithContent,
+  Section,
+  SectionWithBindings,
+  SectionBinding,
+  BindingType,
 } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -282,6 +297,227 @@ class ApiClient {
     return this.request(`/media/${sessionId}/files/${mediaId}`, {
       method: "DELETE",
     });
+  }
+
+  // ============================================================================
+  // Projects
+  // ============================================================================
+
+  async createProject(data: {
+    name: string;
+    description?: string;
+    client_name?: string;
+    target_date?: string;
+  }): Promise<Project> {
+    return this.request("/projects", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listProjects(skip = 0, limit = 50): Promise<ProjectListItem[]> {
+    return this.request(`/projects?skip=${skip}&limit=${limit}`);
+  }
+
+  async getProject(projectId: string): Promise<ProjectWithMembers> {
+    return this.request(`/projects/${projectId}`);
+  }
+
+  async updateProject(
+    projectId: string,
+    data: Partial<Project>
+  ): Promise<Project> {
+    return this.request(`/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    return this.request(`/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async addProjectMember(
+    projectId: string,
+    userId: string,
+    role: ProjectRole
+  ): Promise<ProjectMember> {
+    return this.request(`/projects/${projectId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, role }),
+    });
+  }
+
+  async listProjectMembers(projectId: string): Promise<ProjectMember[]> {
+    return this.request(`/projects/${projectId}/members`);
+  }
+
+  async updateProjectMember(
+    projectId: string,
+    memberId: string,
+    role: ProjectRole
+  ): Promise<ProjectMember> {
+    return this.request(`/projects/${projectId}/members/${memberId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async removeProjectMember(projectId: string, memberId: string): Promise<void> {
+    return this.request(`/projects/${projectId}/members/${memberId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ============================================================================
+  // Documents
+  // ============================================================================
+
+  async createDocument(data: {
+    project_id: string;
+    document_type: DocumentType;
+    title: string;
+    description?: string;
+    derived_from_id?: string;
+    content?: Record<string, unknown>;
+  }): Promise<Document> {
+    return this.request("/documents", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listProjectDocuments(projectId: string): Promise<DocumentListItem[]> {
+    return this.request(`/documents/project/${projectId}`);
+  }
+
+  async getDocument(documentId: string): Promise<DocumentWithContent> {
+    return this.request(`/documents/${documentId}`);
+  }
+
+  async updateDocument(
+    documentId: string,
+    data: Partial<Document & { content?: Record<string, unknown> }>
+  ): Promise<Document> {
+    return this.request(`/documents/${documentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteDocument(documentId: string): Promise<void> {
+    return this.request(`/documents/${documentId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Document versions
+  async createDocumentVersion(
+    documentId: string,
+    changeSummary?: string
+  ): Promise<DocumentVersion> {
+    return this.request(`/documents/${documentId}/versions`, {
+      method: "POST",
+      body: JSON.stringify({ change_summary: changeSummary }),
+    });
+  }
+
+  async listDocumentVersions(documentId: string): Promise<DocumentVersion[]> {
+    return this.request(`/documents/${documentId}/versions`);
+  }
+
+  async getDocumentVersion(
+    documentId: string,
+    versionNumber: number
+  ): Promise<DocumentVersionWithContent> {
+    return this.request(`/documents/${documentId}/versions/${versionNumber}`);
+  }
+
+  async restoreDocumentVersion(
+    documentId: string,
+    versionNumber: number
+  ): Promise<Document> {
+    return this.request(`/documents/${documentId}/versions/${versionNumber}/restore`, {
+      method: "POST",
+    });
+  }
+
+  // ============================================================================
+  // Sections
+  // ============================================================================
+
+  async createSection(
+    documentId: string,
+    data: {
+      section_number: string;
+      title: string;
+      parent_id?: string;
+      order?: number;
+      prosemirror_node_id?: string;
+    }
+  ): Promise<Section> {
+    return this.request(`/documents/${documentId}/sections`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, document_id: documentId }),
+    });
+  }
+
+  async listSections(documentId: string): Promise<Section[]> {
+    return this.request(`/documents/${documentId}/sections`);
+  }
+
+  async getSection(documentId: string, sectionId: string): Promise<SectionWithBindings> {
+    return this.request(`/documents/${documentId}/sections/${sectionId}`);
+  }
+
+  async updateSection(
+    documentId: string,
+    sectionId: string,
+    data: Partial<Section>
+  ): Promise<Section> {
+    return this.request(`/documents/${documentId}/sections/${sectionId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSection(documentId: string, sectionId: string): Promise<void> {
+    return this.request(`/documents/${documentId}/sections/${sectionId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Section bindings
+  async createSectionBinding(
+    documentId: string,
+    sectionId: string,
+    data: {
+      binding_type: BindingType;
+      message_id?: string;
+      note?: string;
+    }
+  ): Promise<SectionBinding> {
+    return this.request(`/documents/${documentId}/sections/${sectionId}/bindings`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, section_id: sectionId }),
+    });
+  }
+
+  async updateSectionBinding(
+    documentId: string,
+    bindingId: string,
+    data: { is_active?: boolean; note?: string }
+  ): Promise<SectionBinding> {
+    return this.request(`/documents/${documentId}/bindings/${bindingId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getActiveBindings(documentId: string): Promise<SectionBinding[]> {
+    return this.request(`/documents/${documentId}/active-bindings`);
   }
 }
 
