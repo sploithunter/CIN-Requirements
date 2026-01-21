@@ -398,3 +398,69 @@ async def test_deactivate_binding(
     data = response.json()
     assert data["is_active"] is False
     assert data["deactivated_at"] is not None
+
+
+# ============================================================================
+# Document Import Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_import_document_preview(
+    client: AsyncClient, auth_headers: dict, test_project: Project
+):
+    """Test previewing a document import."""
+    # Read a test docx file
+    test_file_path = "/Users/jason/Documents/Conversational_Requirements_Platform_Requirements_v1.2.docx"
+
+    import os
+    if not os.path.exists(test_file_path):
+        pytest.skip("Test document not available")
+
+    with open(test_file_path, "rb") as f:
+        response = await client.post(
+            f"/api/v1/documents/import/{test_project.id}/preview",
+            headers=auth_headers,
+            files={"file": ("test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "metadata" in data
+    assert "sections" in data
+    assert len(data["sections"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_import_document(
+    client: AsyncClient, auth_headers: dict, test_project: Project
+):
+    """Test importing a document."""
+    test_file_path = "/Users/jason/Documents/Conversational_Requirements_Platform_Requirements_v1.2.docx"
+
+    import os
+    if not os.path.exists(test_file_path):
+        pytest.skip("Test document not available")
+
+    with open(test_file_path, "rb") as f:
+        response = await client.post(
+            f"/api/v1/documents/import/{test_project.id}",
+            headers=auth_headers,
+            files={"file": ("requirements.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_type": "requirements", "title": "Imported Requirements"},
+        )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "Imported Requirements"
+    assert data["document_type"] == "requirements"
+    assert data["status"] == "draft"
+
+    # Verify sections were created
+    sections_response = await client.get(
+        f"/api/v1/documents/{data['id']}/sections",
+        headers=auth_headers,
+    )
+    assert sections_response.status_code == 200
+    sections = sections_response.json()
+    assert len(sections) > 0

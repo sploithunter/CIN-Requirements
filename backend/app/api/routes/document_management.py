@@ -1,14 +1,15 @@
 from uuid import UUID
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.services.document_importer import DocumentImporter
 from app.api.routes.projects import get_project_with_access
 from app.models.project import ProjectRole
-from app.models.document import Document, DocumentStatus
+from app.models.document import Document, DocumentStatus, DocumentType
 from app.models.document_version import DocumentVersion
 from app.models.section import Section, SectionStatus
 from app.models.section_binding import SectionBinding, BindingType
@@ -149,6 +150,150 @@ async def delete_document(
 
     await db.delete(document)
     await db.commit()
+
+
+# ============================================================================
+# Document Import
+# ============================================================================
+
+
+@router.post("/import/{project_id}", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+async def import_document(
+    project_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+    document_type: str = Form("requirements"),
+    title: str | None = Form(None),
+):
+    """
+    Import a document from a .docx file.
+
+    Creates a new document with the imported content and automatically
+    creates sections based on the document's heading structure.
+    """
+    await get_project_with_access(
+        project_id,
+        current_user,
+        db,
+        required_roles=[ProjectRole.OWNER, ProjectRole.GATHERER],
+    )
+
+    # Validate file type
+    if not file.filename or not file.filename.lower().endswith(".docx"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .docx files are supported",
+        )
+
+    # Validate document type
+    valid_types = ["requirements", "functional", "specification", "rom", "custom"]
+    if document_type not in valid_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document type. Must be one of: {', '.join(valid_types)}",
+        )
+
+    # Read file content
+    file_content = await file.read()
+
+    # Import document
+    importer = DocumentImporter()
+    try:
+        result = importer.import_docx(file_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to parse document: {str(e)}",
+        )
+
+    # Merge consecutive lists in content
+    if result["content"].get("content"):
+        result["content"]["content"] = importer.merge_consecutive_lists(
+            result["content"]["content"]
+        )
+
+    # Create document
+    doc_title = title or result["metadata"].get("title") or file.filename.rsplit(".", 1)[0]
+
+    document = Document(
+        project_id=project_id,
+        document_type=DocumentType[document_type.upper()],
+        title=doc_title,
+        description=result["metadata"].get("subject"),
+        content=result["content"],
+        created_by_id=current_user.id,
+    )
+    db.add(document)
+    await db.flush()
+
+    # Create sections from detected headings
+    for section_data in result["sections"]:
+        section = Section(
+            document_id=document.id,
+            section_number=section_data["section_number"],
+            title=section_data["title"],
+            prosemirror_node_id=section_data.get("prosemirror_node_id"),
+            order=result["sections"].index(section_data),
+            status=SectionStatus.DRAFT,
+        )
+        db.add(section)
+
+    await db.commit()
+    await db.refresh(document)
+
+    return document
+
+
+@router.post("/import/{project_id}/preview")
+async def preview_import(
+    project_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+):
+    """
+    Preview a document import without creating it.
+
+    Returns the parsed structure including detected sections and metadata.
+    """
+    await get_project_with_access(project_id, current_user, db)
+
+    # Validate file type
+    if not file.filename or not file.filename.lower().endswith(".docx"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .docx files are supported",
+        )
+
+    # Read file content
+    file_content = await file.read()
+
+    # Import document
+    importer = DocumentImporter()
+    try:
+        result = importer.import_docx(file_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to parse document: {str(e)}",
+        )
+
+    # Merge consecutive lists
+    if result["content"].get("content"):
+        result["content"]["content"] = importer.merge_consecutive_lists(
+            result["content"]["content"]
+        )
+
+    return {
+        "filename": file.filename,
+        "metadata": result["metadata"],
+        "sections": result["sections"],
+        "content_preview": {
+            "type": result["content"]["type"],
+            "node_count": len(result["content"].get("content", [])),
+        },
+    }
 
 
 # ============================================================================
