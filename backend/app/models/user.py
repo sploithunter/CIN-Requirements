@@ -9,6 +9,8 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.session import Session
+    from app.models.project import ProjectMember
+    from app.models.document import Document
 
 
 class User(Base):
@@ -32,4 +34,12 @@ class User(Base):
     # Relationships
     sessions: Mapped[list["Session"]] = relationship(
         "Session", back_populates="owner", cascade="all, delete-orphan"
+    )
+    project_memberships: Mapped[list["ProjectMember"]] = relationship(
+        "ProjectMember", back_populates="user", cascade="all, delete-orphan"
+    )
+    created_documents: Mapped[list["Document"]] = relationship(
+        "Document",
+        back_populates="created_by",
+        foreign_keys="Document.created_by_id",
     )

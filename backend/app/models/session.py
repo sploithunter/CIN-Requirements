@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.message import Message
     from app.models.media import Media
+    from app.models.project import Project
+    from app.models.document import Document
 
 
 class SessionStatus(str, enum.Enum):
@@ -40,6 +42,16 @@ class Session(Base):
     # Owner
     owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
 
+    # Project association (optional - sessions can exist outside projects)
+    project_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("projects.id"), nullable=True
+    )
+
+    # Which document is this session working on?
+    active_document_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True
+    )
+
     # Real-time collaboration
     liveblocks_room_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
@@ -59,6 +71,8 @@ class Session(Base):
 
     # Relationships
     owner: Mapped["User"] = relationship("User", back_populates="sessions")
+    project: Mapped["Project | None"] = relationship("Project", back_populates="sessions")
+    active_document: Mapped["Document | None"] = relationship("Document")
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="session", cascade="all, delete-orphan"
     )

@@ -10,6 +10,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.session import Session
+    from app.models.section_binding import SectionBinding
 
 
 class MessageRole(str, enum.Enum):
@@ -59,3 +60,6 @@ class Message(Base):
 
     # Relationships
     session: Mapped["Session"] = relationship("Session", back_populates="messages")
+    section_bindings: Mapped[list["SectionBinding"]] = relationship(
+        "SectionBinding", back_populates="message"
+    )
